@@ -21,6 +21,12 @@ class ActionResult(BaseModel):
     entry: dict[str, Any] | None = None
 
 
+class BatchResult(ActionResult):
+    """增量窗口处理结果：同时回带游标与批次，批次页据此复显扫描位置。"""
+
+    batch: dict[str, Any] | None = None
+
+
 class EntryPayload(BaseModel):
     """登记或修改一条业务记录时提交的字段集合。"""
 
@@ -227,11 +233,12 @@ class DeltaEntry(BaseModel):
     field_0: str | None = None  # 游标编号
     field_1: str | None = None  # 目标端点
     field_2: str | None = None  # 增量字段
-    field_3: str | None = None  # 当前水位
+    field_3: str | None = None  # 确认水位
     field_4: str | None = None  # 回退步数
     field_5: str | None = None  # 批次上限
     field_6: str | None = None  # 去重窗口
     field_7: str | None = None  # 重跑开关
+    field_8: str | None = None  # 扫描位置
 
 class ExportEntry(BaseModel):
     """导出通道明细结构。"""

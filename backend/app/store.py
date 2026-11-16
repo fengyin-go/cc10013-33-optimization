@@ -8,6 +8,9 @@ from typing import Any
 
 from app.seed import SEED_ROWS
 
+# 增量批次的辅助表挂在 delta 模块下面，概览里不再单独占一行。
+AUXILIARY_MODULES = {"delta_batch", "delta_audit", "delta_record"}
+
 
 class Store:
     def __init__(self) -> None:
@@ -16,10 +19,17 @@ class Store:
         }
 
     def module_names(self) -> list[str]:
-        return sorted(self._tables)
+        """业务模块列表；增量批次的辅助表不算独立模块。"""
+        return sorted(name for name in self._tables if name not in AUXILIARY_MODULES)
 
     def rows(self, module: str) -> list[dict[str, Any]]:
         return self._tables.setdefault(module, [])
+
+    def reset(self) -> None:
+        """把内存表恢复成示例数据；测试和本地演示重复跑同一套场景时使用。"""
+        self._tables = {
+            name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
+        }
 
     def find(self, module: str, entry_id: int) -> dict[str, Any] | None:
         for row in self.rows(module):

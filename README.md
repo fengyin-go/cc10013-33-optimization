@@ -65,7 +65,7 @@ npm run dev
 | 数据清洗 | `cleanse` | 清洗规则 | 规则编号、目标字段、空值替换 |
 | 限流配置 | `ratelimit` | 限流规则 | 规则编号、目标端点、令牌速率 |
 | 采集日志 | `log` | 日志记录 | 记录编号、关联端点、请求时间 |
-| 增量采集 | `delta` | 增量游标 | 游标编号、目标端点、增量字段 |
+| 增量采集 | `delta` | 增量游标 | 游标编号、目标端点、增量字段、确认水位、扫描位置 |
 | 数据导出 | `export` | 导出通道 | 通道编号、输出数据集、目标系统 |
 
 ## 约定
@@ -74,6 +74,34 @@ npm run dev
   `backend/app/routers/<模块>.py`，业务规则在 `backend/app/services/<模块>.py`。
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
+
+## 增量采集的水位与批次
+
+增量采集的重复判断、水位推进和批次生成统一收在
+`backend/app/services/delta_pipeline.py`，扫描、补数、暂停恢复、回退和失败窗口重试
+都调同一个 `process_window`，不再各自实现一套：
+
+- 确认水位与扫描位置分开保存：确认水位只前进不后退，扫描位置可以回退，
+  扫描位置永远不覆盖确认水位。
+- 批次以「游标编号 + 去重窗口」为唯一键，同一窗口重复扫描只复用同一个批次结果；
+  记录以「游标编号 + 记录编号」去重，同一去重窗口不会重复入账。
+- 早于确认水位的迟到记录记冲突、进增量审计待处理队列；恰在水位的记录按重复处理；
+  晚于水位的记录才入账并推进确认水位。
+- 扫描中断只登记失败窗口，不写记录、不推水位；从失败窗口重试时窗口与批次不变。
+
+相关接口：
+
+```text
+GET  /api/delta/batches                  批次数据集（复显扫描位置）
+GET  /api/delta/batches/{id}             批次详情
+POST /api/delta/batches/{id}/retry       从失败窗口重试
+GET  /api/delta/audit                    增量审计待处理队列
+GET  /api/delta/{id}/downstream          下游视图（水位不倒退、记录不重复）
+POST /api/delta/{id}/scan                扫描一个去重窗口
+POST /api/delta/{id}/rewind              回退扫描位置
+```
+
+回归用例：`cd backend && .venv/bin/pip install -r requirements-dev.txt && .venv/bin/python -m unittest discover -s tests -v`。
 
 领域：数据工程
 子方向：数据采集、爬虫与RPA
